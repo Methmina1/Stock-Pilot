@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from typing import Literal
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -8,6 +9,7 @@ class RegisterRequest(BaseModel):
     full_name: str
     email: EmailStr
     password: str
+    role: Literal["investor", "analyst"] = "investor"
 
 class RefreshRequest(BaseModel):
     refresh_token: str
