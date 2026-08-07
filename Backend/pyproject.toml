@@ -58,10 +58,10 @@ build-backend = "hatchling.build"
 
 # ✅ ADD THIS SECTION - Tells hatchling where your source code is
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["app"]
 
 [tool.hatch.build.targets.sdist]
-packages = ["src"]
+packages = ["app"]
 
 [dependency-groups]
 dev = [
