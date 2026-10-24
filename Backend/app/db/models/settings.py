@@ -1,5 +1,6 @@
 from sqlalchemy import Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import insert
 from app.db.base import Base
 
 
@@ -31,9 +32,13 @@ async def get_settings(db) -> "PlatformSettings":
     """Fetch the singleton settings row, creating it with defaults if absent."""
     settings = await db.get(PlatformSettings, 1)
     if settings is None:
-        settings = PlatformSettings(id=1, **DEFAULT_THRESHOLDS)
-        db.add(settings)
-        await db.flush()
+        await db.execute(
+            insert(PlatformSettings)
+            .values(id=1, **DEFAULT_THRESHOLDS)
+            .on_conflict_do_nothing(index_elements=[PlatformSettings.id])
+        )
+        await db.commit()
+        settings = await db.get(PlatformSettings, 1)
     return settings
 
 

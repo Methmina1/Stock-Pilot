@@ -43,7 +43,7 @@ async def update_me(
     if body.bio is not None:
         user.bio = body.bio
     try:
-        await db.flush()
+        await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Email already registered") from exc
@@ -62,7 +62,7 @@ async def update_password(
     if len(body.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
     user.password_hash = hash_password(body.new_password)
-    await db.flush()
+    await db.commit()
     return {"detail": "Password updated successfully."}
 
 
@@ -98,7 +98,7 @@ async def upload_avatar(
             old_file.unlink()
 
     user.avatar_url = f"/uploads/avatars/{filename}"
-    await db.flush()
+    await db.commit()
     await db.refresh(user)
     return user
 
@@ -113,6 +113,6 @@ async def remove_avatar(
         if old_file.exists():
             old_file.unlink()
         user.avatar_url = None
-        await db.flush()
+        await db.commit()
         await db.refresh(user)
     return user

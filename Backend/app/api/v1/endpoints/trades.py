@@ -36,7 +36,7 @@ async def create_trade(body: TradeCreate, db: AsyncSession = Depends(get_db), us
         notes=body.notes,
     )
     db.add(trade)
-    await db.flush()
+    await db.commit()
     await db.refresh(trade)
     return trade
 
@@ -52,3 +52,4 @@ async def delete_trade(
     if trade is None:
         raise HTTPException(status_code=404, detail="Trade not found")
     await db.delete(trade)
+    await db.commit()

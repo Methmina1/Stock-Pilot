@@ -39,8 +39,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 ## 2. Clone the repository
 
 ```bash
-git clone https://github.com/Thepasinduheshan/Stock-pilot-original.git
-cd Stock-pilot-original
+git clone https://github.com/Methmina1/Stock-Pilot.git
+cd Stock-Pilot
 ```
 
 ---

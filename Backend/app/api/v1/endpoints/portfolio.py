@@ -95,7 +95,7 @@ async def update_holding(
         holding.quantity = body.quantity
     if body.avg_cost is not None:
         holding.avg_cost = body.avg_cost
-    await db.flush()
+    await db.commit()
     await db.refresh(holding)
     return holding
 
@@ -111,3 +111,4 @@ async def delete_holding(
     if holding is None:
         raise HTTPException(status_code=404, detail="Holding not found")
     await db.delete(holding)
+    await db.commit()

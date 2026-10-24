@@ -27,7 +27,7 @@ async def list_strategies(db: AsyncSession = Depends(get_db), user: User = Depen
 async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     strategy = Strategy(owner_id=user.id, name=body.name, description=body.description, weights=body.weights)
     db.add(strategy)
-    await db.flush()
+    await db.commit()
     await db.refresh(strategy)
     return strategy
 
@@ -49,7 +49,7 @@ async def update_strategy(
         strategy.description = body.description
     if body.weights is not None:
         strategy.weights = body.weights
-    await db.flush()
+    await db.commit()
     await db.refresh(strategy)
     return strategy
 
@@ -65,6 +65,7 @@ async def delete_strategy(
     if strategy is None:
         raise HTTPException(status_code=404, detail="Strategy not found")
     await db.delete(strategy)
+    await db.commit()
 
 
 @router.post("/{strategy_id}/publish")
@@ -162,5 +163,5 @@ async def request_publish(
         )
         db.add(listing)
 
-    await db.flush()
+    await db.commit()
     return {"status": "review", "listing_id": str(listing.id)}

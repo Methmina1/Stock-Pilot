@@ -30,8 +30,8 @@ export default function Admin() {
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [statsRes, revenueRes, pendingRes, listingsRes, strategiesRes, usersRes, thresholdsRes] = await Promise.all([
         api.get('/api/v1/admin/stats'),
@@ -52,7 +52,7 @@ export default function Admin() {
     } catch (err) {
       console.error('Admin fetch error:', err);
     }
-    setLoading(false);
+    if (showLoading) setLoading(false);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -61,7 +61,7 @@ export default function Admin() {
     setActionLoading(label);
     try {
       await fn();
-      await fetchData();
+      await fetchData(false);
     } catch (err) {
       alert(err.response?.data?.detail || `Failed: ${label}`);
     }
@@ -436,7 +436,7 @@ export default function Admin() {
 
       {/* Thresholds Tab */}
       {tab === 'thresholds' && thresholds && (
-        <ThresholdsEditor initial={thresholds} onSaved={fetchData} />
+        <ThresholdsEditor initial={thresholds} onSaved={() => fetchData(false)} />
       )}
 
       {/* Confirm dialog */}

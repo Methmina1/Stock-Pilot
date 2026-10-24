@@ -98,7 +98,7 @@ async def get_live_prediction(
 
     if persist:
         db.add(prediction)
-        await db.flush()
+        await db.commit()
         await db.refresh(prediction)
 
     return prediction

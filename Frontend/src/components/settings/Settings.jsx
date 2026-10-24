@@ -8,6 +8,14 @@ const TABS = [
   { key: 'security', label: 'Security' },
 ];
 
+function profileFromUser(user) {
+  const names = (user?.full_name || '').split(' ');
+  return {
+    first_name: names[0] || '', last_name: names.slice(1).join(' ') || '',
+    email: user?.email || '', phone: user?.phone || '', bio: user?.bio || '',
+  };
+}
+
 export default function Settings() {
   const [searchParams] = useSearchParams();
   const { user, updateUser } = useAuth();
@@ -17,9 +25,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  const [profileForm, setProfileForm] = useState({
-    first_name: '', last_name: '', email: '', phone: '', bio: '',
-  });
+  const [profileForm, setProfileForm] = useState(() => profileFromUser(user));
 
   const [passwordForm, setPasswordForm] = useState({
     current: '', new_password: '', confirm: '',
@@ -27,14 +33,7 @@ export default function Settings() {
 
   useEffect(() => {
     if (user) {
-      const names = (user.full_name || '').split(' ');
-      setProfileForm({
-        first_name: names[0] || '',
-        last_name: names.slice(1).join(' ') || '',
-        email: user.email || '',
-        phone: user.phone || '',
-        bio: user.bio || '',
-      });
+      setProfileForm(profileFromUser(user));
     }
   }, [user]);
 
@@ -128,7 +127,7 @@ export default function Settings() {
     <div className="view-enter">
       <div className="eyebrow">Account</div>
       <h1 className="page">Settings</h1>
-      <p className="lede">Manage your profile, security, and notifications.</p>
+      <p className="lede">Manage your profile and security.</p>
 
       {message && (
         <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(212,168,83,.08)', border: '1px solid rgba(212,168,83,.25)', color: 'var(--accent)', fontSize: 13, fontFamily: 'var(--mono)' }}>
@@ -161,7 +160,7 @@ export default function Settings() {
                   <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarUpload} />
                   <button className="btn primary" onClick={() => fileInputRef.current?.click()} disabled={saving}>Upload new photo</button>
                   <button className="btn" style={{ marginLeft: 6 }} onClick={handleAvatarRemove} disabled={saving || !avatarUrl}>Remove</button>
-                  <div className="mini-note">JPG or PNG, up to 2 MB.</div>
+                  <div className="mini-note">JPG, PNG or WebP, up to 2 MB.</div>
                 </div>
               </div>
               <div className="s-form" style={{ marginTop: 22 }}>
@@ -173,7 +172,7 @@ export default function Settings() {
               </div>
               <div className="s-actions">
                 <button className="btn primary" onClick={handleSaveProfile} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</button>
-                <button className="btn">Cancel</button>
+                <button className="btn" onClick={() => { setProfileForm(profileFromUser(user)); setMessage(''); }}>Cancel</button>
               </div>
             </div>
           )}

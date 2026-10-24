@@ -41,7 +41,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
     db.add(user)
     try:
-        await db.flush()
+        await db.commit()
         await db.refresh(user)
     except IntegrityError:
         await db.rollback()

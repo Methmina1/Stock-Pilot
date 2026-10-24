@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.db.models.watchlist import Watchlist
 from app.db.models.user import User
@@ -25,7 +26,11 @@ async def add_to_watchlist(body: WatchlistAdd, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=409, detail="Already on watchlist")
     item = Watchlist(user_id=user.id, ticker=body.ticker.upper())
     db.add(item)
-    await db.flush()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Already on watchlist") from exc
     await db.refresh(item)
     return item
 
@@ -39,3 +44,4 @@ async def remove_from_watchlist(ticker: str, db: AsyncSession = Depends(get_db),
     if item is None:
         raise HTTPException(status_code=404, detail="Ticker not on watchlist")
     await db.delete(item)
+    await db.commit()

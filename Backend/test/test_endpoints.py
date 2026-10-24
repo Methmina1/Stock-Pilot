@@ -4,6 +4,7 @@ StockPilot Endpoint Tester – Final (Works with Current Backend)
 """
 
 import json
+import os
 import time
 import sys
 import uuid
@@ -13,7 +14,7 @@ from typing import Dict, List, Optional
 
 import requests
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = os.getenv("STOCKPILOT_API_BASE", "http://localhost:8000/api/v1")
 TIMEOUT = 180
 
 
@@ -398,6 +399,8 @@ class EndpointTester:
         avg_time = sum(r.elapsed for r in self.results) / total if total else 0
         print(f"Average response time: {avg_time*1000:.1f} ms")
         print("\n✅ Testing complete.")
+        if failed:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

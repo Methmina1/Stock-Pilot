@@ -28,6 +28,7 @@ async def mark_read(notification_id: uuid.UUID, db: AsyncSession = Depends(get_d
     if notif is None:
         raise HTTPException(status_code=404, detail="Notification not found")
     notif.is_read = True
+    await db.commit()
     return {"ok": True}
 
 
@@ -36,4 +37,5 @@ async def mark_all_read(db: AsyncSession = Depends(get_db), user: User = Depends
     await db.execute(
         update(Notification).where(Notification.user_id == user.id, Notification.is_read == False).values(is_read=True)
     )
+    await db.commit()
     return {"ok": True}

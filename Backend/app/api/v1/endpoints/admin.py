@@ -53,7 +53,7 @@ async def update_thresholds(
     settings.min_sharpe = min_sharpe
     settings.max_drawdown = max_drawdown
     settings.min_profit_factor = min_profit_factor
-    await db.flush()
+    await db.commit()
     return thresholds_dict(settings)
 
 
@@ -167,7 +167,7 @@ async def update_user_role(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.role = new_role
-    await db.flush()
+    await db.commit()
     return {"id": str(user.id), "role": user.role.value}
 
 
@@ -220,7 +220,7 @@ async def approve_listing(
     listing.listed_at = datetime.now(timezone.utc)
     if listing.strategy:
         listing.strategy.is_published = True
-    await db.flush()
+    await db.commit()
     return {"status": "verified"}
 
 
@@ -243,7 +243,7 @@ async def reject_listing(
     listing.status = ListingStatus.removed
     if listing.strategy:
         listing.strategy.is_published = False
-    await db.flush()
+    await db.commit()
     return {"status": "removed"}
 
 
@@ -264,7 +264,7 @@ async def remove_listing(
     listing.status = ListingStatus.removed
     if listing.strategy:
         listing.strategy.is_published = False
-    await db.flush()
+    await db.commit()
     return {"status": "removed"}
 
 
@@ -285,7 +285,7 @@ async def delete_listing(
     if listing.strategy:
         listing.strategy.is_published = False
     await db.delete(listing)
-    await db.flush()
+    await db.commit()
     return {"status": "deleted"}
 
 
@@ -333,7 +333,7 @@ async def delete_strategy(
     if strategy.listing:
         await db.delete(strategy.listing)
     await db.delete(strategy)
-    await db.flush()
+    await db.commit()
     return {"status": "deleted"}
 
 
@@ -350,7 +350,7 @@ async def toggle_user_status(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = not user.is_active
-    await db.flush()
+    await db.commit()
     return {"id": str(user.id), "is_active": user.is_active}
 
 
@@ -367,7 +367,7 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     await db.delete(user)
-    await db.flush()
+    await db.commit()
     return {"status": "deleted"}
 
 

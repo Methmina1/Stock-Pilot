@@ -49,7 +49,7 @@ async def create_listing(
         status=ListingStatus.draft,
     )
     db.add(listing)
-    await db.flush()
+    await db.commit()
     result = await db.execute(
         select(MarketplaceListing)
         .options(selectinload(MarketplaceListing.strategy).selectinload(Strategy.owner), selectinload(MarketplaceListing.ratings))
@@ -131,7 +131,7 @@ async def update_listing(
     for key, value in update_data.items():
         setattr(listing, key, value)
 
-    await db.flush()
+    await db.commit()
     result = await db.execute(
         select(MarketplaceListing)
         .options(selectinload(MarketplaceListing.strategy).selectinload(Strategy.owner))
