@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from app.db.session import AsyncSessionLocal, engine
 from app.db.base import Base
-import app.db.models  # noqa
+import app.db.models  
 from app.db.models.user import User, UserRole
 from app.db.models.stock import Stock
 from app.db.models.prediction import Prediction, SignalType
