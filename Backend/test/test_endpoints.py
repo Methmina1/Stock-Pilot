@@ -7,6 +7,7 @@ import json
 import time
 import sys
 import uuid
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -29,7 +30,8 @@ class TestResult:
     @property
     def passed(self) -> bool:
         if self.expected_status is not None:
-            return self.status == self.expected_status
+            expected = self.expected_status
+            return self.status in expected if isinstance(expected, tuple) else self.status == expected
         return self.status < 400
 
     def __str__(self):
@@ -107,9 +109,9 @@ class EndpointTester:
         status, data, elapsed = self._request(method, endpoint, expected_status,
                                               json_data, headers, files)
         error = None
-        if expected_status is not None and status != expected_status:
+        if expected_status is not None and not (status in expected_status if isinstance(expected_status, tuple) else status == expected_status):
             error = f"Expected {expected_status}, got {status}: {data}"
-        elif status >= 400:
+        elif expected_status is None and status >= 400:
             error = f"HTTP {status}: {data.get('detail', data)}"
         result = TestResult(endpoint, method, status, elapsed, expected_status, error)
         self.results.append(result)
@@ -120,6 +122,8 @@ class EndpointTester:
         print("\n" + "="*80)
         print("STARTING ENDPOINT TESTS")
         print("="*80)
+        credentials_path = Path(__file__).resolve().parents[1] / "data_storage" / "demo-credentials.json"
+        credentials = json.loads(credentials_path.read_text(encoding="utf-8"))
 
         # ---------- AUTHENTICATION ----------
         print("\n--- Authentication (Public) ---")
@@ -132,30 +136,31 @@ class EndpointTester:
                   expected_status=409)
 
         self.test("POST", "/auth/login",
-                  json_data={"email": "demo@stockpilot.io", "password": "demo1234"},
+                  json_data={"email": "demo@stockpilot.io", "password": credentials["demo@stockpilot.io"]},
                   expected_status=200)
         self.test("POST", "/auth/login",
-                  json_data={"email": "admin@stockpilot.io", "password": "admin1234"},
+                  json_data={"email": "admin@stockpilot.io", "password": credentials["admin@stockpilot.io"]},
                   expected_status=200)
         self.test("POST", "/auth/login",
-                  json_data={"email": "sarah@stockpilot.io", "password": "analyst1234"},
+                  json_data={"email": "sarah@stockpilot.io", "password": credentials["sarah@stockpilot.io"]},
                   expected_status=200)
 
-        if not self.login("demo@stockpilot.io", "demo1234", "investor"):
+        if not self.login("demo@stockpilot.io", credentials["demo@stockpilot.io"], "investor"):
             print("❌ Investor login failed – aborting.")
             return
-        self.login("admin@stockpilot.io", "admin1234", "admin")
-        self.login("sarah@stockpilot.io", "analyst1234", "analyst")
+        self.login("admin@stockpilot.io", credentials["admin@stockpilot.io"], "admin")
+        self.login("sarah@stockpilot.io", credentials["sarah@stockpilot.io"], "analyst")
 
         resp = self.session.post(f"{BASE_URL}/auth/login",
-                                 json={"email": "demo@stockpilot.io", "password": "demo1234"})
+                                 json={"email": "demo@stockpilot.io", "password": credentials["demo@stockpilot.io"]})
         if resp.status_code == 200:
             refresh = resp.json().get("refresh_token")
             self.test("POST", "/auth/refresh", json_data={"refresh_token": refresh}, expected_status=200)
 
-        # ---------- USER PROFILE (skipped because test user creation fails) ----------
-        print("\n--- User Profile (skipped) ---")
-        print("  ⚠️  Skipping profile tests due to test user login issue.")
+        # ---------- USER PROFILE ----------
+        print("\n--- User Profile ---")
+        if self.login(unique_email, "test1234", "registered"):
+            self.test("GET", "/users/me", expected_status=200, role="registered")
 
         # ---------- STOCKS & PREDICTIONS ----------
         print("\n--- Stocks & Predictions ---")
@@ -173,7 +178,7 @@ class EndpointTester:
         print("\n--- Live Market Data ---")
         self.test("GET", "/live/market-status", expected_status=200)
         self.test("GET", "/live/quote/AAPL", expected_status=200)
-        self.test("GET", "/live/quote/INVALID", expected_status=500)  # known bug
+        self.test("GET", "/live/quote/INVALID", expected_status=(404, 502))
         self.test("GET", "/live/intraday/AAPL?interval=1m", expected_status=200)
         self.test("GET", "/live/chart/AAPL?period=1mo&interval=1d", expected_status=200)
 
@@ -189,7 +194,7 @@ class EndpointTester:
                    "w_volatility": 18, "w_volume": 10, "w_growth": 16}
         self.test("GET", "/analysis/AAPL/factors", json_data=weights, expected_status=200)
         self.test("GET", "/analysis/AAPL/factors", json_data={**weights, "w_sentiment": 100}, expected_status=200)
-        self.test("GET", "/analysis/INVALID/factors", json_data=weights, expected_status=500)  # known bug
+        self.test("GET", "/analysis/INVALID/factors", json_data=weights, expected_status=404)
         backtest_params = {"period": "6mo", "risk": "Moderate", "horizon": "Medium", **weights}
         self.test("GET", "/analysis/AAPL/backtest", json_data=backtest_params, expected_status=200)
         self.test("GET", "/analysis/AAPL/backtest", json_data={**backtest_params, "period": "1d"}, expected_status=422)
@@ -227,8 +232,7 @@ class EndpointTester:
         self.session.delete(f"{BASE_URL}/watchlist/NFLX", timeout=TIMEOUT)
         self.test("GET", "/watchlist", expected_status=200)
         self.test("POST", "/watchlist", json_data={"ticker": "NFLX"}, expected_status=201)
-        # Duplicate – backend currently returns 500 (bug)
-        self.test("POST", "/watchlist", json_data={"ticker": "NFLX"}, expected_status=500)
+        self.test("POST", "/watchlist", json_data={"ticker": "NFLX"}, expected_status=409)
         self.test("DELETE", "/watchlist/NFLX", expected_status=204)
         self.test("DELETE", "/watchlist/XYZ", expected_status=404)
 
@@ -311,9 +315,9 @@ class EndpointTester:
                 "backtest_profit_factor": 1.2,
                 "backtest_return": 0.15
             }
-            # Known: publish endpoint returns 404 (router issue)
+            # Submission is rejected when the supplied backtest misses thresholds.
             self.test("POST", f"/strategies/{strat_id}/publish",
-                      json_data=publish_data, expected_status=404)
+                      json_data=publish_data, expected_status=400)
             self.set_token("investor")
             self.test("POST", f"/strategies/{strat_id}/publish",
                       json_data=publish_data, expected_status=403)
@@ -327,8 +331,7 @@ class EndpointTester:
         self.set_token("investor")
         # Use the correct endpoint: /listings
         self.test("GET", "/marketplace/listings", expected_status=200)
-        # Thresholds are under admin
-        self.test("GET", "/admin/thresholds", expected_status=200)
+        self.test("GET", "/admin/thresholds", expected_status=403)
 
         # ---------- NOTIFICATIONS ----------
         print("\n--- Notifications ---")

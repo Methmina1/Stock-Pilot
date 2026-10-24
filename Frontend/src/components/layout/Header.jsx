@@ -124,9 +124,6 @@ export default function Header() {
                   ))
                 )}
               </div>
-              <div className="dd-foot" onClick={() => { navigate('/settings?tab=notifications'); setNotifOpen(false); }}>
-                Notification settings →
-              </div>
             </div>
           </div>
 

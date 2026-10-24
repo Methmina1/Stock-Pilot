@@ -109,19 +109,6 @@ async def get_portfolio_history(
     )
     trades = result.scalars().all()
 
-    holdings_result = await db.execute(
-        select(Holding).where(Holding.user_id == user.id, Holding.closed_at.is_(None))
-    )
-    holdings = holdings_result.scalars().all()
-    current_mv = sum(float(h.quantity) * float(h.current_price or h.avg_cost) for h in holdings)
-
-    if not trades:
-        now = datetime.now(timezone.utc)
-        return {
-            "portfolio": [{"date": now.strftime("%Y-%m"), "value": round(current_mv)}],
-            "benchmark": [{"date": now.strftime("%Y-%m"), "value": round(current_mv)}],
-        }
-
     monthly_pnl: dict[str, float] = {}
     for t in trades:
         month = t.closed_at.strftime("%Y-%m")
@@ -131,28 +118,13 @@ async def get_portfolio_history(
         monthly_pnl[month] = monthly_pnl.get(month, 0) + pnl
 
     months = sorted(monthly_pnl.keys())
-    if not months:
-        return {"portfolio": [], "benchmark": []}
-
-    initial_cost = sum(float(h.quantity) * float(h.avg_cost) for h in holdings)
-    base_value = max(initial_cost, current_mv * 0.5)
-
-    cumulative = base_value - sum(monthly_pnl.values())
+    cumulative = 0.0
     portfolio_points = []
-    benchmark_points = []
-    benchmark_val = cumulative
-
     for m in months:
         cumulative += monthly_pnl[m]
-        portfolio_points.append({"date": m, "value": round(cumulative)})
-        benchmark_val *= 1.008
-        benchmark_points.append({"date": m, "value": round(benchmark_val)})
+        portfolio_points.append({"date": m, "value": round(cumulative, 2)})
 
-    portfolio_points.append({"date": datetime.now(timezone.utc).strftime("%Y-%m"), "value": round(current_mv)})
-    benchmark_val *= 1.008
-    benchmark_points.append({"date": datetime.now(timezone.utc).strftime("%Y-%m"), "value": round(benchmark_val)})
-
-    return {"portfolio": portfolio_points, "benchmark": benchmark_points}
+    return {"portfolio": portfolio_points}
 
 
 @router.get("/batch")
@@ -161,13 +133,9 @@ async def get_dashboard_batch(
     user: User = Depends(get_current_user),
 ):
     """Single call returning all dashboard data — replaces 3 separate requests."""
-    import asyncio
-    indices_task = get_market_indices(user)
-    sector_task = get_sector_breakdown(db=db, user=user)
-    history_task = get_portfolio_history(db=db, user=user)
-    indices, sectors, history = await asyncio.gather(
-        indices_task, sector_task, history_task
-    )
+    indices = await get_market_indices(user)
+    sectors = await get_sector_breakdown(db=db, user=user)
+    history = await get_portfolio_history(db=db, user=user)
     return {
         "market_indices": indices,
         "sector_breakdown": sectors,

@@ -1,4 +1,5 @@
 import uuid
+import re
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from app.db.models.user import User, UserRole
 from app.db.models.settings import get_settings
 from app.schemas.strategy import StrategyCreate, StrategyUpdate, StrategyOut
 from app.core.dependencies import get_current_user, require_role
+from app.api.v1.endpoints.analysis import run_backtest
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -68,13 +70,8 @@ async def delete_strategy(
 @router.post("/{strategy_id}/publish")
 async def request_publish(
     strategy_id: uuid.UUID,
-    price_cents: int = Body(default=0, embed=True),
-    backtest_trades: int = Body(default=0, embed=True),
-    backtest_winrate: float = Body(default=0.0, embed=True),
-    backtest_sharpe: float = Body(default=0.0, embed=True),
-    backtest_max_drawdown: float = Body(default=1.0, embed=True),
-    backtest_profit_factor: float = Body(default=0.0, embed=True),
-    backtest_return: float = Body(default=0.0, embed=True),
+    price_cents: int = Body(default=0, embed=True, ge=0),
+    ticker: str = Body(default="", embed=True),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role(UserRole.analyst, UserRole.admin)),
 ):
@@ -90,6 +87,28 @@ async def request_publish(
     strategy = result.scalar_one_or_none()
     if strategy is None:
         raise HTTPException(status_code=404, detail="Strategy not found")
+
+    ticker = ticker.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9.^-]{1,20}", ticker):
+        raise HTTPException(status_code=400, detail="A valid backtest ticker is required")
+    keys = ("sentiment", "momentum", "valuation", "volatility", "volume", "growth")
+    try:
+        weights = {key: float(strategy.weights[key]) for key in keys}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Strategy has invalid factor weights") from exc
+    if any(not 0 <= value <= 100 for value in weights.values()) or sum(weights.values()) <= 0:
+        raise HTTPException(status_code=400, detail="Strategy has invalid factor weights")
+
+    backtest = await run_backtest(
+        ticker=ticker, period="1y", risk="Moderate", horizon="Medium",
+        **{f"w_{key}": value for key, value in weights.items()},
+    )
+    backtest_trades = backtest["trade_count"]
+    backtest_winrate = backtest["win_rate"]
+    backtest_sharpe = backtest["sharpe_ratio"]
+    backtest_max_drawdown = abs(backtest["max_drawdown_pct"]) / 100
+    backtest_profit_factor = backtest["profit_factor"]
+    backtest_return = backtest["total_return_pct"] / 100
 
     thresholds = await get_settings(db)
     min_trades = thresholds.min_trades

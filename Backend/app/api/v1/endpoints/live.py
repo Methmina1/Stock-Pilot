@@ -1,12 +1,15 @@
 from fastapi import APIRouter, HTTPException, Query
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
+import math
 
 router = APIRouter(prefix="/live", tags=["Live"])
 
 def safe_float(val):
     try:
-        return float(val) if val is not None else None
+        number = float(val) if val is not None else None
+        return number if number is not None and math.isfinite(number) else None
     except (ValueError, TypeError):
         return None
 
@@ -19,21 +22,36 @@ def safe_int(val):
 # ---- Market status ----
 @router.get("/market-status")
 async def get_market_status():
+    def session(zone: str, opens: time, closes: time) -> dict:
+        now = datetime.now(ZoneInfo(zone))
+        is_open = now.weekday() < 5 and opens <= now.time() < closes
+        return {"open": opens.strftime("%H:%M"), "close": closes.strftime("%H:%M"), "is_open": is_open}
+
+    us = session("America/New_York", time(9, 30), time(16))
     return {
-        "us": {"open": "09:30", "close": "16:00", "is_open": True},
-        "europe": {"open": "08:00", "close": "16:30", "is_open": True},
-        "asia": {"open": "09:00", "close": "15:00", "is_open": True},
+        "is_open": us["is_open"],
+        "status": "US regular hours" if us["is_open"] else "US market closed",
+        "basis": "Weekday regular hours; exchange holidays are not included",
+        "us": us,
+        "europe": session("Europe/London", time(8), time(16, 30)),
+        "asia": session("Asia/Tokyo", time(9), time(15)),
     }
 
 # ---- Quote ----
 @router.get("/quote/{ticker}")
 async def get_live_quote(ticker: str):
-    t = yf.Ticker(ticker.upper())
-    info = t.info
-    fi = t.fast_info
+    try:
+        t = yf.Ticker(ticker.upper())
+        info = t.info or {}
+        fi = t.fast_info
+        price = safe_float(getattr(fi, "last_price", None))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Market quote is unavailable") from exc
+    if price is None:
+        raise HTTPException(status_code=404, detail="No quote for ticker")
     return {
         "ticker": ticker.upper(),
-        "price": safe_float(getattr(fi, "last_price", None)),
+        "price": price,
         "change": safe_float(info.get("regularMarketChange")),
         "change_percent": safe_float(info.get("regularMarketChangePercent")),
         "open": safe_float(getattr(fi, "open", None)),
@@ -60,11 +78,13 @@ async def get_chart_data(
     interval: str = Query("1d")
 ):
     t = yf.Ticker(ticker.upper())
-    data = t.history(period=period, interval=interval)
+    try:
+        data = t.history(period=period, interval="1h" if interval == "4h" else interval)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Chart data is unavailable") from exc
     if data.empty:
         raise HTTPException(status_code=404, detail="No chart data found")
     if interval == "4h":
-        data = t.history(period=period, interval="1h")
         data = data.resample('4h').agg({
             "Open": "first",
             "High": "max",

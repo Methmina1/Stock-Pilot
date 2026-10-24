@@ -80,14 +80,12 @@ export default function Marketplace() {
         case 'return': return (b.backtest_return || 0) - (a.backtest_return || 0);
         case 'sharpe': return (b.backtest_sharpe || 0) - (a.backtest_sharpe || 0);
         case 'price_low': return (a.price_cents || 0) - (b.price_cents || 0);
-        case 'newest': return b.id - a.id;
+        case 'newest': return new Date(b.listed_at || b.created_at || 0) - new Date(a.listed_at || a.created_at || 0);
         default: return (b.avg_rating || 0) - (a.avg_rating || 0);
       }
     });
     return items;
   }, [listings, search, sortBy, filterStatus]);
-
-  const purchased = listings.filter(l => l.status === 'verified' || l.status === 'listed').slice(0, 2);
 
   if (loading) return <LoadingSpinner />;
 
@@ -95,7 +93,7 @@ export default function Marketplace() {
     <div className="view-enter">
       <div className="eyebrow">Marketplace</div>
       <h1 className="page">Strategy Marketplace</h1>
-      <p className="lede">Verified factor weight configurations published by analysts. Every strategy must pass an objective backtest against the thresholds below before it can be listed.</p>
+      <p className="lede">Factor weight configurations reviewed by administrators. Seeded catalog ratings and results are illustrative demo data; new submissions are backtested against the thresholds below.</p>
 
       <div className="thresh-grid">
         {THRESHOLD_META.map((t, i) => (
@@ -106,30 +104,6 @@ export default function Marketplace() {
           </div>
         ))}
       </div>
-
-      {/* My strategies */}
-      {purchased.length > 0 && (
-        <>
-          <div className="sec-label">My strategies</div>
-          <div className="mkt-owned-grid">
-            {purchased.map((l) => (
-              <div key={'own-' + l.id} className="mkt-owned-card">
-                <div className="mkt-owned-top">
-                  <span className="mkt-owned-name">{l.strategy?.name}</span>
-                  <span className="mkt-status ok">Active</span>
-                </div>
-                <div className="mkt-owned-stats">
-                  {l.backtest_return != null && <span className="mono up">{(l.backtest_return * 100).toFixed(0)}% return</span>}
-                  {l.backtest_sharpe != null && <span className="mono">{l.backtest_sharpe.toFixed(2)} Sharpe</span>}
-                </div>
-                <button className="btn primary" style={{ width: '100%', marginTop: 10 }} onClick={() => navigate('/advisor')}>
-                  Open in Advisor
-                </button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
 
       {/* Search and filter */}
       <div className="sec-label">Available strategies</div>
@@ -191,7 +165,7 @@ export default function Marketplace() {
                 <div className="mkt-bottom">
                   <span className="mkt-price">{price}</span>
                   {isVerified ? (
-                    <button className="btn primary" onClick={() => navigate('/advisor')}>Apply in Advisor</button>
+                    <button className="btn primary" onClick={() => navigate('/advisor', { state: { weights } })}>Apply in Advisor</button>
                   ) : (
                     <button className="btn" disabled style={{ opacity: .5 }}>Awaiting verification</button>
                   )}
@@ -208,7 +182,7 @@ export default function Marketplace() {
         <div className="card pad creator-cta">
           <div>
             <div className="ctitle"><span className="dot" />Request to publish a strategy</div>
-            <div className="csub" style={{ marginBottom: 0 }}>Design and save a strategy in the Advisor, then request approval here. Run a backtest &mdash; if it clears every threshold above, an admin reviews and lists it, and you earn from every sale.</div>
+            <div className="csub" style={{ marginBottom: 0 }}>Design and save a strategy in the Advisor, then run a backtest and request administrator review here.</div>
           </div>
           <button className="btn gold" onClick={() => setShowPublish(true)}>Request Publish</button>
         </div>
@@ -216,7 +190,7 @@ export default function Marketplace() {
         <div className="card pad creator-cta">
           <div>
             <div className="ctitle"><span className="dot" />Publish a strategy</div>
-            <div className="csub" style={{ marginBottom: 0 }}>Analysts design factor weights, submit them for automatic backtesting, and earn from every sale. Contact an administrator to request analyst access.</div>
+            <div className="csub" style={{ marginBottom: 0 }}>Analysts can design factor weights and submit them for backtesting and review. Contact an administrator to request analyst access.</div>
           </div>
           <button className="btn" disabled style={{ opacity: .5 }}>Analyst role required</button>
         </div>
@@ -290,8 +264,6 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
   const sharpe = parseFloat(backtestSharpe) || 0;
   const drawdown = parseFloat(backtestDrawdown) / 100 || 0;
   const profitFactor = parseFloat(backtestProfitFactor) || 0;
-  const retPct = parseFloat(backtestReturn) / 100 || 0;
-
   const checks = [
     { label: 'Trades', met: trades >= thresholds.min_trades, val: `${trades}`, req: `${thresholds.min_trades}` },
     { label: 'Win Rate', met: winrate >= thresholds.min_winrate, val: `${(winrate * 100).toFixed(0)}%`, req: `${(thresholds.min_winrate * 100).toFixed(0)}%` },
@@ -299,7 +271,7 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
     { label: 'Drawdown', met: drawdown <= thresholds.max_drawdown && drawdown > 0, val: `${(drawdown * 100).toFixed(0)}%`, req: `≤${(thresholds.max_drawdown * 100).toFixed(0)}%` },
     { label: 'Profit Factor', met: profitFactor >= thresholds.min_profit_factor, val: profitFactor.toFixed(2), req: thresholds.min_profit_factor.toFixed(1) },
   ];
-  const allMet = checks.every(c => c.met);
+  const allMet = ran && checks.every(c => c.met);
 
   const handleSubmit = async () => {
     if (!selectedId || !allMet) return;
@@ -308,12 +280,7 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
     try {
       await api.post(`/api/v1/strategies/${selectedId}/publish`, {
         price_cents: Math.round((parseFloat(priceDollars) || 0) * 100),
-        backtest_trades: trades,
-        backtest_winrate: winrate,
-        backtest_sharpe: sharpe,
-        backtest_max_drawdown: drawdown,
-        backtest_profit_factor: profitFactor,
-        backtest_return: retPct,
+        ticker: ticker.trim().toUpperCase(),
       });
       onPublished();
     } catch (err) {
@@ -341,7 +308,7 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
           <>
             <div className="publish-field">
               <label>Strategy</label>
-              <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="publish-select">
+              <select value={selectedId} onChange={(e) => { setSelectedId(e.target.value); setRan(false); }} className="publish-select">
                 {strategies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
@@ -368,7 +335,7 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
               <input
                 className="publish-input"
                 value={ticker}
-                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                onChange={(e) => { setTicker(e.target.value.toUpperCase()); setRan(false); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') runBacktest(); }}
                 placeholder="Ticker to test (e.g. AAPL)"
               />
@@ -377,7 +344,7 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
               </button>
             </div>
             <div className="publish-bt-hint">
-              Runs the real engine on this strategy's weights and auto-fills the results below. You can also enter values manually.
+              Runs the backtest with this strategy's weights. The server reruns it when you submit for review.
             </div>
             {btError && (
               <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: 'var(--bear)', fontSize: 13 }}>
@@ -391,27 +358,27 @@ function PublishDialog({ onClose, onPublished, thresholds = DEFAULT_THRESHOLDS }
             <div className="publish-bt-grid">
               <div className="publish-field">
                 <label>Total Trades</label>
-                <input type="number" min="0" value={backtestTrades} onChange={(e) => setBacktestTrades(e.target.value)} placeholder="e.g. 150" className="publish-input" />
+                <input type="number" value={backtestTrades} readOnly className="publish-input" />
               </div>
               <div className="publish-field">
                 <label>Win Rate (%)</label>
-                <input type="number" min="0" max="100" step="0.1" value={backtestWinrate} onChange={(e) => setBacktestWinrate(e.target.value)} placeholder="e.g. 68" className="publish-input" />
+                <input type="number" value={backtestWinrate} readOnly className="publish-input" />
               </div>
               <div className="publish-field">
                 <label>Sharpe Ratio</label>
-                <input type="number" step="0.01" value={backtestSharpe} onChange={(e) => setBacktestSharpe(e.target.value)} placeholder="e.g. 1.25" className="publish-input" />
+                <input type="number" value={backtestSharpe} readOnly className="publish-input" />
               </div>
               <div className="publish-field">
                 <label>Max Drawdown (%)</label>
-                <input type="number" min="0" max="100" step="0.1" value={backtestDrawdown} onChange={(e) => setBacktestDrawdown(e.target.value)} placeholder="e.g. 12" className="publish-input" />
+                <input type="number" value={backtestDrawdown} readOnly className="publish-input" />
               </div>
               <div className="publish-field">
                 <label>Profit Factor</label>
-                <input type="number" min="0" step="0.01" value={backtestProfitFactor} onChange={(e) => setBacktestProfitFactor(e.target.value)} placeholder="e.g. 1.8" className="publish-input" />
+                <input type="number" value={backtestProfitFactor} readOnly className="publish-input" />
               </div>
               <div className="publish-field">
                 <label>Return (%)</label>
-                <input type="number" step="0.1" value={backtestReturn} onChange={(e) => setBacktestReturn(e.target.value)} placeholder="e.g. 24.5" className="publish-input" />
+                <input type="number" value={backtestReturn} readOnly className="publish-input" />
               </div>
             </div>
 

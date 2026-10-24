@@ -324,14 +324,14 @@ export default function Portfolio() {
         {/* Left column: Portfolio value */}
         <div className="port-left">
           <div className="card pad">
-            <div className="ctitle"><span className="dot" />Portfolio value</div>
-            <div className="csub">Historical portfolio growth</div>
+            <div className="ctitle"><span className="dot" />Realized trade profit / loss</div>
+            <div className="csub">Cumulative result from closed journal trades</div>
             <div className="chart-box" style={{ height: 220 }}>
               <Line
                 data={{
                   labels: portfolioHistory.map(d => d.date),
                   datasets: [{
-                    label: 'Value', data: portfolioHistory.map(d => d.value),
+                    label: 'Realized P/L', data: portfolioHistory.map(d => d.value),
                     borderColor: '#d4a853', backgroundColor: 'rgba(212,168,83,.06)',
                     borderWidth: 2, fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: '#d4a853',
                   }],
@@ -341,7 +341,7 @@ export default function Portfolio() {
                   plugins: { legend: { display: false } },
                   scales: {
                     x: { grid: { color: GRID }, border: { display: false }, ticks: { color: '#71717a', font: chartFont } },
-                    y: { grid: { color: GRID }, border: { display: false }, ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'k', color: '#71717a', font: chartFont } },
+                    y: { grid: { color: GRID }, border: { display: false }, ticks: { callback: v => '$' + Number(v).toLocaleString(), color: '#71717a', font: chartFont } },
                   },
                 }}
               />

@@ -1,6 +1,10 @@
-"""Seed the database with full demo data for StockPilot."""
+"""Replace the database contents with demo data for StockPilot."""
+import argparse
 import asyncio
+import json
+import secrets
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from app.db.session import AsyncSessionLocal, engine
 from app.db.base import Base
 import app.db.models  
@@ -14,7 +18,7 @@ from app.db.models.strategy import Strategy
 from app.db.models.marketplace import MarketplaceListing, ListingStatus
 from app.db.models.notification import Notification, NotificationKind
 from app.core.security import hash_password
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 
 NOW = datetime.now(timezone.utc)
 
@@ -24,15 +28,25 @@ def dt(year, month, day, hour=9, minute=30):
 
 
 async def seed():
+    demo_credentials = {
+        email: secrets.token_urlsafe(18)
+        for email in (
+            "demo@stockpilot.io", "admin@stockpilot.io", "sarah@stockpilot.io",
+            "james@stockpilot.io", "alex@stockpilot.io",
+        )
+    }
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # Reset the demo database completely, including tables from older versions
+        # that are no longer represented in the current SQLAlchemy metadata.
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as db:
         # ── Demo user ──
         demo_user = User(
             email="demo@stockpilot.io",
-            password_hash=hash_password("demo1234"),
+            password_hash=hash_password(demo_credentials["demo@stockpilot.io"]),
             full_name="Demo Trader",
             role=UserRole.investor,
         )
@@ -43,7 +57,7 @@ async def seed():
         # ── Admin user ──
         admin_user = User(
             email="admin@stockpilot.io",
-            password_hash=hash_password("admin1234"),
+            password_hash=hash_password(demo_credentials["admin@stockpilot.io"]),
             full_name="Admin User",
             role=UserRole.admin,
         )
@@ -57,7 +71,7 @@ async def seed():
             ("James Park", "james@stockpilot.io"),
             ("Alex Rivera", "alex@stockpilot.io"),
         ]:
-            u = User(email=email, password_hash=hash_password("analyst1234"), full_name=name, role=UserRole.analyst)
+            u = User(email=email, password_hash=hash_password(demo_credentials[email]), full_name=name, role=UserRole.analyst)
             db.add(u)
             await db.flush()
             analysts[name] = u.id
@@ -242,9 +256,11 @@ async def seed():
             ))
 
         await db.commit()
+        credentials_path = Path(__file__).resolve().parent / "data_storage" / "demo-credentials.json"
+        credentials_path.parent.mkdir(parents=True, exist_ok=True)
+        credentials_path.write_text(json.dumps(demo_credentials, indent=2) + "\n", encoding="utf-8")
         print("Seed completed successfully!")
-        print(f"  Admin user: admin@stockpilot.io / admin1234")
-        print(f"  Demo user: demo@stockpilot.io / demo1234 (id: {user_id})")
+        print("  Role credentials saved to ignored data_storage/demo-credentials.json")
         print(f"  {len(stocks_data)} stocks")
         print(f"  {len(predictions_data)} predictions")
         print(f"  {len(holdings_data)} holdings")
@@ -255,4 +271,9 @@ async def seed():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Replace all StockPilot tables with demo data")
+    parser.add_argument("--reset-demo-db", action="store_true", help="Confirm deletion of all existing application data")
+    args = parser.parse_args()
+    if not args.reset_demo_db:
+        parser.error("This deletes all existing application data. Pass --reset-demo-db to confirm.")
     asyncio.run(seed())

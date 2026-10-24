@@ -39,8 +39,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 ## 2. Clone the repository
 
 ```bash
-git clone https://github.com/thestockpilot/stock_pilot.git
-cd stock_pilot
+git clone https://github.com/Thepasinduheshan/Stock-pilot-original.git
+cd Stock-pilot-original
 ```
 
 ---
@@ -54,29 +54,21 @@ CREATE DATABASE stockpilot;
 ```
 
 Remember your PostgreSQL username, password and port (default `5432`) — you'll
-put them in the backend `.env` next. The application creates all tables
+use them to configure the backend process next. The application creates all tables
 automatically on first start, so no manual migration step is needed.
 
 ---
 
-## 4. Backend setup (`backend/`)
+## 4. Backend setup (`Backend/`)
 
 ```bash
-cd backend
+cd Backend
 ```
 
-**a. Create your `.env`** — copy the template and fill in your values:
-
-```bash
-# Windows PowerShell
-copy .env.example .env
-# macOS/Linux
-cp .env.example .env
-```
-
-Edit `.env` and set at least:
+**a. Configure the backend process** using your local environment or a secret manager.
+Set at least:
 - `DATABASE_URL` — e.g. `postgresql+asyncpg://postgres:YOUR_PASSWORD@localhost:5432/stockpilot`
-- `SECRET_KEY` — generate one:
+- `SECRET_KEY` — generate a persistent, private value:
   ```bash
   uv run python -c "import secrets; print(secrets.token_hex(32))"
   ```
@@ -87,18 +79,15 @@ Edit `.env` and set at least:
 uv sync
 ```
 
-**c. Seed demo data** (creates the demo users, analysts and the admin account):
+**c. Seed demo data** (creates the demo users, analysts and the admin account).
+This command deletes all existing application tables and data; use it only on a fresh demo database:
 
 ```bash
-uv run python seed.py
+uv run python seed.py --reset-demo-db
 ```
 
-**d. (Optional) Train the model** — needed for the live "MODEL LIVE" XGBoost
-prediction. The explainable six-factor verdict works without it.
-
-```bash
-uv run python train.py
-```
+**d. Model artifact** — `models/xgboost/current/model.pkl` is included for the
+live XGBoost prediction. Only load model files from a source you trust.
 
 **e. Run the backend** (http://localhost:8000):
 
@@ -127,27 +116,32 @@ on port `8000` (configured in `vite.config.js`), so keep both running.
 
 ## 6. Log in
 
-Open http://localhost:5173 and sign in with a seeded account:
+Open http://localhost:5173 and sign in with a seeded account. Each seed run
+generates fresh passwords in the local, Git-ignored
+`Backend/data_storage/demo-credentials.json` file:
 
-| Role | Email | Password |
-|------|-------|----------|
-| Investor | `demo@stockpilot.io` | `demo1234` |
-| Analyst | `sarah@stockpilot.io` | `analyst1234` |
-| Admin | `admin@stockpilot.io` | `admin1234` |
+| Role | Email |
+|------|-------|
+| Investor | `demo@stockpilot.io` |
+| Analyst | `sarah@stockpilot.io` |
+| Admin | `admin@stockpilot.io` |
 
 You can also register a new **Investor** or **Financial Analyst** account.
 Administrators are provisioned separately (via `seed.py`) and are not
 self-registerable.
 
+The seeded predictions, marketplace ratings, sales and historical returns are
+illustrative demo records. Use the live prediction and backtest endpoints for
+current model output; market data and headlines depend on external providers.
+
 ---
 
 ## 7. Running the tests
 
-From `backend/`:
+From `Backend/`:
 
 ```bash
-uv run python -m pytest tests/ -q     # unit tests (AI layer, schemas, security)
-uv run python db_tests.py             # database constraint tests (all rolled back)
+uv run python -m pytest -q
 ```
 
 ---
@@ -162,14 +156,11 @@ uv run python db_tests.py             # database constraint tests (all rolled ba
 
 ## Troubleshooting
 
-- **Backend won't start / DB error** — check `DATABASE_URL` in `backend/.env`,
+- **Backend won't start / DB error** — check `DATABASE_URL`,
   confirm PostgreSQL is running and the `stockpilot` database exists.
-- **`SECRET_KEY` / settings error** — make sure `backend/.env` exists (copied
-  from `.env.example`) and has `DATABASE_URL` and `SECRET_KEY` set.
+- **`SECRET_KEY` / settings error** — make sure the backend process has
+  `DATABASE_URL` and `SECRET_KEY` set.
 - **Frontend can't reach the API** — the backend must be running on port 8000;
   the Vite dev server proxies `/api` to it.
 - **First run is slow** — PyTorch and the FinBERT model download on first use.
 - **`uv` not found** — reopen the terminal after installing uv so it's on PATH.
-
-> Keep your `backend/.env` private — it holds your database password and JWT
-> secret and should never be committed.

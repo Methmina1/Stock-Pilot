@@ -2,18 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
-import Toggle from '../ui/Toggle';
 
 const TABS = [
   { key: 'profile', label: 'Profile' },
   { key: 'security', label: 'Security' },
-  { key: 'notifications', label: 'Notifications' },
 ];
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
   const { user, updateUser } = useAuth();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
+  const [activeTab, setActiveTab] = useState(() =>
+    TABS.some((tab) => tab.key === searchParams.get('tab')) ? searchParams.get('tab') : 'profile'
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -23,11 +23,6 @@ export default function Settings() {
 
   const [passwordForm, setPasswordForm] = useState({
     current: '', new_password: '', confirm: '',
-  });
-
-  const [notifPrefs, setNotifPrefs] = useState({
-    verdict_changes: true, news_sentiment: true, price_alerts: true,
-    marketplace_updates: false, weekly_report: true, product_news: false,
   });
 
   useEffect(() => {
@@ -45,7 +40,7 @@ export default function Settings() {
 
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && TABS.some((t) => t.key === tab)) setActiveTab(tab);
+    setActiveTab(tab && TABS.some((t) => t.key === tab) ? tab : 'profile');
   }, [searchParams]);
 
   const handleSaveProfile = async () => {
@@ -198,28 +193,6 @@ export default function Settings() {
               </div>
             </>
           )}
-
-          {/* Notifications */}
-          {activeTab === 'notifications' && (
-            <div className="s-card">
-              <h3>Notification preferences</h3>
-              <div className="s-sub">Choose how you want to be notified about activity on your account.</div>
-              {[
-                { key: 'verdict_changes', title: 'Verdict changes', desc: 'When the AI switches Buy, Hold or Sell on a watched stock.' },
-                { key: 'news_sentiment', title: 'News sentiment alerts', desc: 'Strongly positive or negative headlines on your holdings.' },
-                { key: 'price_alerts', title: 'Price alerts', desc: 'Stop-loss triggers and price target breaches.' },
-                { key: 'marketplace_updates', title: 'Marketplace updates', desc: 'New verified strategies and analyst publications.' },
-                { key: 'weekly_report', title: 'Weekly performance report', desc: 'Email summary of portfolio performance every Sunday.' },
-                { key: 'product_news', title: 'Product news', desc: 'Occasional emails about new features and improvements.' },
-              ].map((item) => (
-                <div key={item.key} className="s-toggle-row">
-                  <div><div className="s-t-title">{item.title}</div><div className="s-t-desc">{item.desc}</div></div>
-                  <Toggle on={notifPrefs[item.key]} onToggle={(v) => setNotifPrefs({ ...notifPrefs, [item.key]: v })} />
-                </div>
-              ))}
-            </div>
-          )}
-
 
         </div>
       </div>

@@ -1,7 +1,8 @@
-import uuid as uuid_mod
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from app.db.session import get_db
 from app.db.models.user import User
 from app.schemas.user import UserOut, UserUpdate, PasswordUpdate
@@ -31,12 +32,21 @@ async def update_me(
     if body.full_name is not None:
         user.full_name = body.full_name
     if body.email is not None:
-        user.email = body.email
+        email = body.email.lower()
+        if email != user.email:
+            existing = await db.execute(select(User.id).where(User.email == email))
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(status_code=409, detail="Email already registered")
+        user.email = email
     if body.phone is not None:
         user.phone = body.phone
     if body.bio is not None:
         user.bio = body.bio
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered") from exc
     await db.refresh(user)
     return user
 
@@ -68,10 +78,24 @@ async def upload_avatar(
     data = await file.read()
     if len(data) > MAX_SIZE:
         raise HTTPException(status_code=400, detail="File size must be under 2 MB.")
-
-    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        ext = "png"
+    elif data.startswith(b"\xff\xd8\xff"):
+        ext = "jpg"
+    elif data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        ext = "webp"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid image file.")
+    expected_type = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[ext]
+    if file.content_type != expected_type:
+        raise HTTPException(status_code=400, detail="Image type does not match its content.")
     filename = f"{user.id}.{ext}"
     (UPLOAD_DIR / filename).write_bytes(data)
+
+    if user.avatar_url and Path(user.avatar_url).name != filename:
+        old_file = UPLOAD_DIR / Path(user.avatar_url).name
+        if old_file.exists():
+            old_file.unlink()
 
     user.avatar_url = f"/uploads/avatars/{filename}"
     await db.flush()

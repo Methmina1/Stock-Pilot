@@ -34,13 +34,13 @@ export default function InvestorDashboard() {
 
   const [marketIndices, setMarketIndices] = useState([]);
   const [sectorBreakdown, setSectorBreakdown] = useState([]);
-  const [portfolioHistory, setPortfolioHistory] = useState({ portfolio: [], benchmark: [] });
+  const [portfolioHistory, setPortfolioHistory] = useState({ portfolio: [] });
 
   useEffect(() => {
     api.get('/api/v1/dashboard/batch').then((r) => {
       setMarketIndices(r.data.market_indices || []);
       setSectorBreakdown(r.data.sector_breakdown || []);
-      setPortfolioHistory(r.data.portfolio_history || { portfolio: [], benchmark: [] });
+      setPortfolioHistory(r.data.portfolio_history || { portfolio: [] });
     }).catch(() => {});
   }, []);
 
@@ -55,12 +55,6 @@ export default function InvestorDashboard() {
     () => [...trades].sort((a, b) => new Date(b.closed_at || 0) - new Date(a.closed_at || 0)).slice(0, 5),
     [trades],
   );
-
-  const todayPL = useMemo(() => holdings.reduce((sum, h) => {
-    const price = h.current_price || h.avg_cost || 0;
-    const dayChange = price * 0.012 * (Math.random() > 0.3 ? 1 : -1);
-    return sum + dayChange * (h.quantity || 0);
-  }, 0), [holdings]);
 
   if (holdingsLoading) return <LoadingSpinner />;
 
@@ -77,12 +71,8 @@ export default function InvestorDashboard() {
       <div className="stat-grid">
         <StatCard hero index={0} label="Total value" icon={ICONS.wallet}
                   value={fmtMoney(totalMV)} sub={`${holdings.length} positions`} />
-        <StatCard index={1} label="Today's Profit / Loss" icon={ICONS.activity}
-                  tone={todayPL >= 0 ? 'up' : 'down'}
-                  value={`${todayPL >= 0 ? '+' : ''}${fmtMoney(todayPL)}`}
-                  sub={<TrendSub positive={todayPL >= 0}>
-                    {totalMV > 0 ? Math.abs((todayPL / totalMV) * 100).toFixed(2) : '0'}% today
-                  </TrendSub>} />
+        <StatCard index={1} label="Closed trades" icon={ICONS.activity}
+                  value={trades.length} sub="Recorded in your journal" />
         <StatCard index={2} label="Unrealised Profit / Loss" icon={ICONS.trending}
                   tone={unrealisedPL >= 0 ? 'up' : 'down'}
                   value={`${unrealisedPL >= 0 ? '+' : ''}${fmtMoney(unrealisedPL)}`}
@@ -97,22 +87,17 @@ export default function InvestorDashboard() {
 
       {portfolioHistory.portfolio?.length > 1 && (
         <div className="card pad" style={{ marginBottom: 18 }}>
-          <div className="ctitle"><span className="dot" />Portfolio performance</div>
-          <div className="csub">Portfolio value vs S&amp;P 500 benchmark</div>
+          <div className="ctitle"><span className="dot" />Realized trade profit / loss</div>
+          <div className="csub">Cumulative result from closed journal trades</div>
           <div className="chart-box" style={{ height: 260 }}>
             <Line
               data={{
                 labels: portfolioHistory.portfolio.map((d) => d.date),
                 datasets: [
                   {
-                    label: 'Portfolio', data: portfolioHistory.portfolio.map((d) => d.value),
+                    label: 'Realized P/L', data: portfolioHistory.portfolio.map((d) => d.value),
                     borderColor: '#d4a853', backgroundColor: 'rgba(212,168,83,.06)',
                     borderWidth: 2, fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: '#d4a853',
-                  },
-                  {
-                    label: 'S&P 500', data: portfolioHistory.benchmark.map((d) => d.value),
-                    borderColor: '#71717a', backgroundColor: 'transparent',
-                    borderWidth: 1.5, borderDash: [5, 4], tension: .35, pointRadius: 0,
                   },
                 ],
               }}

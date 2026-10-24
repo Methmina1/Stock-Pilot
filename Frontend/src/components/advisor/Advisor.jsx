@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, RadialLinearScale, ArcElement, Filler, Legend, Tooltip } from 'chart.js';
 import { Line, Bar, Radar } from 'react-chartjs-2';
 import { useStocks } from '../../hooks/useStocks';
@@ -94,6 +95,8 @@ function factorColor(score) {
 }
 
 export default function Advisor() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { stocks } = useStocks();
   const { predictions } = usePredictions();
   const { user } = useAuth();
@@ -102,6 +105,13 @@ export default function Advisor() {
   const [searchInput, setSearchInput] = useState('');
   const [strategyId, setStrategyId] = useState('balanced');
   const [weights, setWeights] = useState({ ...DEFAULT_WEIGHTS });
+  useEffect(() => {
+    const incoming = location.state?.weights;
+    if (incoming && FACTORS.every(({ key }) => Number.isFinite(Number(incoming[key])))) {
+      setWeights(Object.fromEntries(FACTORS.map(({ key }) => [key, Number(incoming[key])])));
+      setStrategyId(null);
+    }
+  }, [location.key, location.state]);
   const [profile, setProfile] = useState({ risk: 'Moderate', horizon: 'Medium', amount: 10000 });
   const [chartTimeframe, setChartTimeframe] = useState(DEFAULT_TIMEFRAME);
   const [backtestPeriod, setBacktestPeriod] = useState('1y');
@@ -109,9 +119,6 @@ export default function Advisor() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(null);
-  const [showPublishDialog, setShowPublishDialog] = useState(null);
-  const [publishPrice, setPublishPrice] = useState('');
 
   const fetchSavedStrategies = useCallback(async () => {
     try {
@@ -140,20 +147,6 @@ export default function Advisor() {
       setSavedStrategies(prev => prev.filter(s => s.id !== id));
       if (strategyId === id) { setStrategyId('balanced'); setWeights({ ...DEFAULT_WEIGHTS }); }
     } catch { /* ignore */ }
-  };
-
-  const handlePublishStrategy = async (id) => {
-    setPublishing(id);
-    try {
-      const cents = Math.max(0, Math.round(parseFloat(publishPrice || '0') * 100));
-      await api.post(`/api/v1/strategies/${id}/publish`, { price_cents: cents });
-      setShowPublishDialog(null);
-      setPublishPrice('');
-      await fetchSavedStrategies();
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to submit for review');
-    }
-    setPublishing(null);
   };
 
   const isAnalystOrAdmin = user?.role === 'analyst' || user?.role === 'admin';
@@ -346,7 +339,7 @@ export default function Advisor() {
                         ))}
                       </div>
                       {isAnalystOrAdmin && !s.is_published && (
-                        <div className="strat-publish" onClick={(e) => { e.stopPropagation(); setShowPublishDialog(s.id); setPublishPrice(''); }}>
+                        <div className="strat-publish" onClick={(e) => { e.stopPropagation(); navigate('/marketplace'); }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                           Request to publish
                         </div>
@@ -358,37 +351,6 @@ export default function Advisor() {
                   ))}
                 </div>
               </>
-            )}
-
-            {/* Publish dialog */}
-            {showPublishDialog && (
-              <div className="save-dialog">
-                <div className="save-dialog-inner">
-                  <div className="save-title">Request to publish strategy</div>
-                  <p style={{ color: 'var(--muted)', fontSize: 13, margin: '8px 0 16px' }}>
-                    Your strategy will be submitted for admin review. Set a price (or leave at $0 for free).
-                  </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                    <span style={{ color: 'var(--muted)' }}>Price $</span>
-                    <input
-                      className="save-input"
-                      style={{ width: 120 }}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={publishPrice}
-                      onChange={(e) => setPublishPrice(e.target.value)}
-                    />
-                  </div>
-                  <div className="save-actions">
-                    <button className="btn" onClick={() => { setShowPublishDialog(null); setPublishPrice(''); }}>Cancel</button>
-                    <button className="btn gold" onClick={() => handlePublishStrategy(showPublishDialog)} disabled={publishing}>
-                      {publishing ? 'Submitting...' : 'Submit for review'}
-                    </button>
-                  </div>
-                </div>
-              </div>
             )}
 
             {/* Weight sliders — always visible */}

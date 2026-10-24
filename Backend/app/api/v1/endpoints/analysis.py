@@ -6,6 +6,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Dict, Any
 import numpy as np
+import math
 import vectorbt as vbt
 from datetime import datetime, timedelta
 from app.services.market_data.fetcher import DataFetcher
@@ -22,9 +23,19 @@ fetcher = DataFetcher()
 engine = FeatureEngine()
 
 
+def fetch_ticker_history(ticker: str, period: str) -> pd.DataFrame:
+    try:
+        return fetcher.fetch_historical(ticker, period=period)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="No data for ticker") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail="Market data is unavailable") from exc
+
+
 def safe_float(val):
     try:
-        return float(val) if val is not None else None
+        number = float(val) if val is not None else None
+        return number if number is not None and math.isfinite(number) else None
     except (ValueError, TypeError):
         return None
 
@@ -109,7 +120,7 @@ async def get_factor_analysis(
         raise HTTPException(status_code=400, detail="Weights must sum to > 0")
 
     # Fetch data
-    raw = fetcher.fetch_historical(ticker, period="6mo")
+    raw = fetch_ticker_history(ticker, period="6mo")
     if raw.empty:
         raise HTTPException(status_code=404, detail="No data for ticker")
     indicators = engine.calculate_all_features(raw)
@@ -188,7 +199,7 @@ async def run_backtest(
         raise HTTPException(status_code=400, detail="Weights must sum to > 0")
 
     # Fetch data
-    raw = fetcher.fetch_historical(ticker, period=period)
+    raw = fetch_ticker_history(ticker, period=period)
     if raw.empty or len(raw) < 60:
         raise HTTPException(status_code=400, detail="Insufficient data (need at least 60 rows)")
 
@@ -284,10 +295,11 @@ async def run_backtest(
         profit_factor = 0
     sharpe = portfolio.sharpe_ratio()
     sharpe = 0 if np.isnan(sharpe) else sharpe
-    max_drawdown = portfolio.max_drawdown() * 100
+    max_drawdown = abs(portfolio.max_drawdown() * 100)
 
     equity = portfolio.value()
-    dates = equity.index
+    full_dates = equity.index
+    dates = full_dates
     if len(equity) > 100:
         step = len(equity) // 100
         indices = range(0, len(equity), step)
@@ -302,8 +314,8 @@ async def run_backtest(
         for _, row in trades_df.iterrows():
             entry_idx = int(row['entry_idx']) if not pd.isna(row['entry_idx']) else None
             exit_idx = int(row['exit_idx']) if not pd.isna(row['exit_idx']) else None
-            entry_date = dates[entry_idx].isoformat() if entry_idx is not None and entry_idx < len(dates) else None
-            exit_date = dates[exit_idx].isoformat() if exit_idx is not None and exit_idx < len(dates) else None
+            entry_date = full_dates[entry_idx].isoformat() if entry_idx is not None and entry_idx < len(full_dates) else None
+            exit_date = full_dates[exit_idx].isoformat() if exit_idx is not None and exit_idx < len(full_dates) else None
 
             trade_ledger.append({
                 "entry_date": entry_date,
@@ -312,8 +324,8 @@ async def run_backtest(
                 "exit_price": float(row['exit_price']),
                 "size": float(row['size']),
                 "pnl": float(row['pnl']),
-                "return_pct": float(row['return']),
-                "status": row['status'],
+                "return_pct": float(row['return']) * 100,
+                "status": int(row['status']),
             })
 
     return {
@@ -336,7 +348,7 @@ async def run_backtest(
 
 @router.get("/{ticker}/bull-bear")
 async def get_bull_bear(ticker: str):
-    raw = fetcher.fetch_historical(ticker, period="6mo")
+    raw = fetch_ticker_history(ticker, period="6mo")
     if raw.empty:
         raise HTTPException(status_code=404, detail="No data")
     indicators = engine.calculate_all_features(raw)

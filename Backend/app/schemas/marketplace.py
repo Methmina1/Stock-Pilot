@@ -8,13 +8,19 @@ from app.db.models.marketplace import ListingStatus
 
 
 # ---------- Your existing schemas (kept as is) ----------
+class StrategyOwnerBrief(BaseModel):
+    full_name: str
+
+    model_config = {"from_attributes": True}
+
+
 class StrategyBrief(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None = None
     weights: dict
     is_preset: bool
-    owner: dict | None = None
+    owner: StrategyOwnerBrief | None = None
 
     model_config = {"from_attributes": True}
 
@@ -31,6 +37,7 @@ class MarketplaceListingOut(BaseModel):
     backtest_sharpe: float | None = None
     backtest_winrate: float | None = None
     listed_at: datetime | None = None
+    created_at: datetime
     strategy: StrategyBrief | None = None
 
     model_config = {"from_attributes": True}
